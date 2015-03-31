@@ -9,12 +9,14 @@ int vBatValue = 0;       // variable to store the battery voltage
 float avgDialValue = 0;  // variable to store the average sensor value
 float dialSetpoint = 0;  // the setpoint of the dial
 float dialMoving = 0;    // is someone turning the dial?
-float dialSetTime = 0;
+unsigned long dialSetTime = 0;
 float avgBatValue = 793; // variable to store the average battery value (793=12V)
 float pwmSetting = 0.0;  // the pwm to supply to the light (0 to 255)
-int lowBatCount = 0;     // count the number of loops with low battery
-int batteryGood = 1;     // flag to set when the battery is dead 
-int initComplete = 0;    // flag to set after measurements have stabelized 
+int   lowBatCount = 0;   // count the number of loops with low battery
+float batPercent = 100;  // The battery charge in percent
+unsigned long   batPercentTime = 0;// the time of the last battery percentage estimate
+int   batteryGood = 1;   // flag to set when the battery is dead 
+int   initComplete = 0;  // flag to set after measurements have stabelized 
 unsigned long time = 0;  // Count absolute time (long is big enough to not loop within many battery lives!)
 
 #define NUM_AVG_POT 12.0
@@ -32,7 +34,9 @@ void setup() {
   	uView.begin();			// start MicroView
 	uView.clear(PAGE);		// clear page
 	pinMode(lightPIN, OUTPUT);		// initialize the digital pin as an output.
-	//widget = new MicroViewGauge(32,16,0,100,WIDGETSTYLE0);		// set widget as gauge STYLE1
+	widget = new MicroViewGauge(32,24,0,100,WIDGETSTYLE1);		// set widget as gauge STYLE1
+	uView.clear(PAGE);		// clear page
+
 	setPwmFrequency(lightPIN,256);	// set PWM frequency to about 31K
 
 	pinMode(dialPin, INPUT);			// make pin as INPUT
@@ -55,9 +59,12 @@ void loop() {
           dialMoving = 1;
           dialSetpoint = dialValue;
           dialSetTime = time;
+  	  uView.clear(PAGE);		// clear page
+          widget->drawFace();
         }
         if(dialMoving && (time-dialSetTime) > 33){   // If it hasn't moved for 1/2 second
           dialMoving = 0;
+  	  uView.clear(PAGE);		// clear page
         }
 
         // Calculate battery voltage
@@ -72,7 +79,7 @@ void loop() {
           if(loopCnt < 4000) dialValue = 100;
         }
         // Calculate the pwm value
-        pwmSetting = pow(2, dialValue / 100.0 * 8.0); 
+        pwmSetting = pow(2, dialSetpoint / 100.0 * 8.0); 
         if(pwmSetting > 255){
           pwmSetting = 255;
         }
@@ -84,55 +91,77 @@ void loop() {
         // Calculate the open circuit battery voltage (no load applied) in V
         //  Assume 100 mOhm internal resistance and 5A current draw at max power
         float ocBatVoltage = batteryVoltage + 0.1*5*(pwmSetting/255); 
-        float batPercent = (ocBatVoltage - 12.0) * 100;
-        if(batPercent > 100.0){
-          batPercent = 100.0;
-        } else if (batPercent < 0.0){
-          batPercent = 0.0;
+        // If the power setting has been stable for over a minute, 
+        //    use the ocBatteryVoltage to calculate the battery charge 
+        if(((time-dialSetTime) > 4000) && ((time-batPercentTime)>1000))
+        {
+          batPercent = (ocBatVoltage - 12.0) * 100;
+          if(batPercent > 100.0){
+            batPercent = 100.0;
+          } else if (batPercent < 0.0){
+            batPercent = 0.0;
+          }
+          batPercentTime = time;
         }
         
-  	//widget->setValue(dialValue);		// display the power in the guage widget
-
         // Display power
         uView.setCursor(0, 0);	
         if(dialMoving){
-          uView.print("Pwr:");
-  	  uView.print(dialValue, 0);
-          if(dialValue < 99.5){
-            uView.print(" ");
+  	  widget->setValue(dialValue);		// display the power in the guage widget
+          //uView.print("Pwr:");
+  	  //uView.print(dialValue, 0);
+          //if(dialValue < 99.5){
+          //  uView.print(" ");
+          //}
+        } else {
+          // Display battery voltage
+          uView.print("\nBat:");
+          uView.print(ocBatVoltage);
+          uView.print("V ");
+     
+          if(batteryGood)
+          {
+            uView.print("\n ");
+            uView.print(batPercent);
+            uView.print("% ");
+          } else {
+            uView.print("\n Dead Bat ");
+          }          
+     
+          // Display time remaining
+          uView.print("\nTime:\n");
+          // Assume battery lasts 40 mins on max, current draw proportional to pwm
+          int displayMins = 0;
+          int displayHrs = 1;
+          float hours = (batPercent/100) * (0.66) / (pwmSetting/255.0);
+          if(hours < 4){
+            displayMins = 1;
           }
-        } else {
-          uView.print("       ");
+          if(hours < 59.0/60.0){
+            displayHrs = 0;
+          }
+          float mins = (hours - int(hours))*60;
+          if(displayHrs){
+            uView.print(int(hours));
+            if(displayMins){
+              uView.print(":");
+            }
+          }
+          if(displayMins)
+          {
+            if(int(mins) < 10){
+              uView.print("0");
+            }
+            uView.print(int(mins));
+            uView.print(" ");
+            if(displayHrs == 0){
+              uView.print("mins");
+            }
+          } else {
+            uView.print(" hrs");
+          }
         }
-
-  
-        // Display battery voltage
-        uView.print("\nBat:");
-        uView.print(ocBatVoltage);
-        uView.print("V ");
-   
-        if(batteryGood)
-        {
-          uView.print("\n ");
-          uView.print(batPercent);
-          uView.print("% ");
-        } else {
-          uView.print("\n Dead Bat ");
-        }          
-   
-        // Display time remaining
-        uView.print("\nTime:\n");
-        // 7.2 aH battery, 4.6A draw at max power
-        float hours = 7.2/4.6 / (pwmSetting/255.0);
-        float mins = (hours - int(hours))*60;
-        uView.print(int(hours));
-        uView.print(":");
-        if(int(mins) < 10){
-          uView.print("0");
-        }
-        uView.print(int(mins));
-        uView.print(" ");
-
+        
   	uView.display();
         
         // Check the battery voltage
