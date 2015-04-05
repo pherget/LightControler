@@ -34,7 +34,7 @@ void setup() {
   	uView.begin();			// start MicroView
 	uView.clear(PAGE);		// clear page
 	pinMode(lightPIN, OUTPUT);		// initialize the digital pin as an output.
-	widget = new MicroViewGauge(32,24,0,100,WIDGETSTYLE1);		// set widget as gauge STYLE1
+	//widget = new MicroViewSlider(0,10,0,100,WIDGETSTYLE0);		// set widget as gauge STYLE1
 	uView.clear(PAGE);		// clear page
 
 	setPwmFrequency(lightPIN,256);	// set PWM frequency to about 31K
@@ -59,12 +59,12 @@ void loop() {
           dialMoving = 1;
           dialSetpoint = dialValue;
           dialSetTime = time;
-  	  uView.clear(PAGE);		// clear page
-          widget->drawFace();
+  	  //uView.clear(PAGE);		// clear page
+          //widget->drawFace();
         }
         if(dialMoving && (time-dialSetTime) > 33){   // If it hasn't moved for 1/2 second
           dialMoving = 0;
-  	  uView.clear(PAGE);		// clear page
+  	  //uView.clear(PAGE);		// clear page
         }
 
         // Calculate battery voltage
@@ -90,7 +90,7 @@ void loop() {
 
         // Calculate the open circuit battery voltage (no load applied) in V
         //  Assume 100 mOhm internal resistance and 5A current draw at max power
-        float ocBatVoltage = batteryVoltage + 0.1*5*(pwmSetting/255); 
+        float ocBatVoltage = batteryVoltage + 0.12*5*(pwmSetting/255); 
         // If the power setting has been stable for over a minute, 
         //    use the ocBatteryVoltage to calculate the battery charge 
         if(((time-dialSetTime) > 4000) && ((time-batPercentTime)>1000))
@@ -103,17 +103,31 @@ void loop() {
           }
           batPercentTime = time;
         }
+        if(batteryGood == 0){
+          batPercent = 0;
+        }
+      
+        // Draw the outline of the battery
+        uView.setColor(1);
+        uView.rect(10,0,37,12); 
+        uView.rectFill(46,4,4,4);
+        // Draw the full side
+        uView.rectFill(11,1,batPercent*35/100,10);
+        // Erase the empty side
+        uView.setColor(0);
+        uView.rectFill(11+batPercent*35/100,1,35-batPercent*35/100,10); 
+        uView.setColor(1);
         
         // Display power
-        uView.setCursor(0, 0);	
-        if(dialMoving){
-  	  widget->setValue(dialValue);		// display the power in the guage widget
+        uView.setCursor(0, 8);	
+        //if(dialMoving){
+  	  //widget->setValue(dialValue);		// display the power in the guage widget
           //uView.print("Pwr:");
   	  //uView.print(dialValue, 0);
           //if(dialValue < 99.5){
           //  uView.print(" ");
           //}
-        } else {
+        //} else {
           // Display battery voltage
           uView.print("\nBat:");
           uView.print(ocBatVoltage);
@@ -121,11 +135,11 @@ void loop() {
      
           if(batteryGood)
           {
-            uView.print("\n ");
+            uView.print(" ");
             uView.print(batPercent);
             uView.print("% ");
           } else {
-            uView.print("\n Dead Bat ");
+            uView.print(" Dead Bat");
           }          
      
           // Display time remaining
@@ -160,7 +174,7 @@ void loop() {
           } else {
             uView.print(" hrs");
           }
-        }
+        //}
         
   	uView.display();
         
